@@ -1,14 +1,22 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b1020" />
-    <meta name="description" content="MEGA — build and manage Android apps from websites." />
-    <title>MEGA — Website to Android</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="./src/public/main.tsx"></script>
-  </body>
-</html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="MEGA — Website to Android app builder and project workspace.">
+<title>MEGA — Website to Android</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:#0b1020;color:#f4f6ff}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 72% 12%,#332b6544,transparent 42%),#0b1020}
+main{width:min(1100px,100%);margin:auto;padding:28px 24px 24px}.nav{display:flex;justify-content:space-between;align-items:center}.brand{font-weight:800;letter-spacing:.1em;display:flex;align-items:center;gap:10px}.mark{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:#a99bff;color:#17132b;font-size:20px}
+a{color:inherit;text-decoration:none}.nav a,.primary{border-radius:10px;padding:12px 16px;border:1px solid #343b56;font-size:14px}.hero{padding:clamp(72px,13vh,135px) 0 78px;max-width:770px}.tag{font-size:11px;letter-spacing:.18em;color:#bdb4ff;font-weight:800}h1{font-size:clamp(46px,8vw,84px);letter-spacing:-.065em;line-height:1;margin:20px 0}h1 span{color:#a99bff}.copy{max-width:580px;color:#aab2c9;font-size:18px;line-height:1.7}.actions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:28px}.primary{background:#a99bff;color:#17132b;border-color:#a99bff;font-weight:800}.features{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.features article{border:1px solid #282f46;background:#12192caa;padding:21px;border-radius:16px}.features h2{font-size:15px}.features p{font-size:13px;line-height:1.7;color:#9da8c1}footer{margin-top:36px;color:#77829d;font-size:12px}
+@media(max-width:650px){main{padding:20px 18px}.features{grid-template-columns:1fr}.copy{font-size:16px}.hero{padding:75px 0 55px}}
+</style>
+</head>
+<body><main>
+<nav class="nav"><a class="brand" href="./"><span class="mark">M</span> MEGA</a><a href="./admin/">Admin workspace ↗</a></nav>
+<section class="hero"><div class="tag">WEBSITE TO ANDROID WORKSPACE</div><h1>From website<br><span>to Android app.</span></h1><p class="copy">Organize website projects, prepare Android app builds, and manage your workflow from one workspace.</p><div class="actions"><a class="primary" href="./admin/">Open administration →</a><a href="https://github.com/gpldroid/mega" target="_blank" rel="noopener noreferrer">View source on GitHub</a></div></section>
+<section class="features"><article><h2>Website projects</h2><p>Keep project files and website configuration organized independently.</p></article><article><h2>Android builds</h2><p>Prepare APK and AAB builds through the GitHub Actions pipeline.</p></article><article><h2>Managed workspace</h2><p>Use Supabase authentication and database policies to protect administrative actions.</p></article></section>
+<footer>© 2026 MEGA · Website to Android</footer>
+</main></body></html>
