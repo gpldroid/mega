@@ -43,3 +43,19 @@ update public.profiles set role = 'admin' where email = 'YOUR_EMAIL';
 Generated APK/AAB currently use the Android debug signing config so that test builds can be installed. Before production distribution or Play Console publishing, configure a private release keystore in GitHub Actions secrets and replace the debug signing configuration. Never commit keystores or signing passwords.
 
 The first implementation stores only download URLs in Supabase; binary files are published as GitHub Release assets rather than committed to git history. The app icon URL is stored, but actual icon generation is a follow-up enhancement; the initial Android template uses the default launcher icon. A website may also restrict WebView embedding or require additional permissions/cookies/deep-link handling.
+
+
+## Automated quality and security checks
+- `.github/workflows/quality-checks.yml` runs the TypeScript production build and audits production dependencies for high/critical npm advisories on pushes and pull requests.
+- `.github/dependabot.yml` checks npm packages and GitHub Actions weekly.
+- Public landing-page SEO files are served from `/robots.txt` and `/sitemap.xml`.
+- Android build inputs are validated before generating project files. HTTPS targets disable Android cleartext traffic; HTTP targets enable it only when explicitly requested by the project URL.
+
+## Database security migration
+The migration `supabase/migrations/20261009020000_security_hardening.sql` limits authenticated profile updates to the `display_name` column, preventing users from changing their own role or email through the Data API. Apply pending migrations to the **MEGA Supabase project** before relying on this database hardening. The currently connected Supabase account did not expose the project reference documented above, so this session did not apply the migration to production.
+
+## Release readiness checklist
+- Configure a private Android release keystore and signing secrets before distributing production APK/AAB files. Current release artifacts use debug signing.
+- Confirm the GitHub Actions and Supabase secrets described above are configured.
+- Review the latest Quality checks and Deploy MEGA frontend workflow runs before treating a commit as released.
+- Keep the npm dependency audit green; review Dependabot pull requests instead of blindly accepting major-version upgrades.
