@@ -25,6 +25,16 @@ const statusText: Record<string,string> = { pending: 'Queued', building: 'Buildi
 const emptyPage = { title: 'New page', slug: 'new-page', body: '', status: 'draft' as const };
 function validUrl(value: string) { try { const u = new URL(value); return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password; } catch { return false; } }
 function slugify(value: string) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new-page'; }
+function encodeBase64(value: string) { const bytes = new TextEncoder().encode(value); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }
+async function writeGitHubFile(token: string, path: string, content: string, message: string) {
+  const response = await fetch(`https://api.github.com/repos/gpldroid/mega/contents/${path.split('/').map(encodeURIComponent).join('/')}`, {
+    method: 'PUT', headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+    body: JSON.stringify({ message, content: encodeBase64(content), branch: 'main' })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'GitHub refused repository write access. Sign in with GitHub again and approve repository access (repo scope) in Supabase GitHub provider settings.' : `GitHub could not save ${path}: ${data.message || `HTTP ${response.status}`}`);
+  return data;
+}
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -146,7 +156,7 @@ function App() {
     setBusy(true); setNotice('');
     try {
       const redirectTo = new URL('/mega/', window.location.origin).toString();
-      const { error } = await supabase.auth.signInWithOAuth({ provider: 'github', options: { redirectTo } });
+      const { error } = await supabase.auth.signInWithOAuth({ provider: 'github', options: { redirectTo, scopes: 'repo' } });
       if (error) throw error;
     } catch (e) { setNotice(e instanceof Error ? e.message : 'GitHub sign-in could not start'); setBusy(false); }
   }
@@ -154,19 +164,48 @@ function App() {
   async function createSite(e: FormEvent) {
     e.preventDefault();
     if (!user) return;
+    if (!siteName.trim()) { setNotice('Enter a project name.'); return; }
     if (siteUrl.trim() && !validUrl(siteUrl.trim())) { setNotice('Enter a valid HTTP(S) website URL, or leave it blank for a new site.'); return; }
     setBusy(true); setNotice('');
-    const { data, error } = await supabase.from('managed_sites').insert({
-      user_id: user.id, name: siteName.trim(), site_url: siteUrl.trim() || null,
-      description: siteDescription.trim(), framework: 'static', status: 'draft'
-    }).select('id').single();
-    if (error) setNotice('Could not create website: ' + error.message);
-    else {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const githubToken = session?.provider_token;
+      if (!githubToken) throw new Error('To save a project in GitHub, sign in with the GitHub button (not email) and grant repository access.');
+      const folder = `webs/projects/${slugify(siteName)}-${Date.now().toString(36)}`;
+      const project = {
+        name: siteName.trim(), slug: folder.split('/').pop(), website_url: siteUrl.trim() || null,
+        description: siteDescription.trim(), framework: 'static', status: 'draft',
+        owner_id: user.id, created_at: new Date().toISOString(), project_path: folder
+      };
+      const starterHtml = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${siteName.trim().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c] || c))}</title>
+  <style>body{font-family:system-ui,sans-serif;max-width:760px;margin:12vh auto;padding:24px;line-height:1.7;color:#172033}h1{font-size:clamp(2rem,6vw,3.5rem)}p{color:#526078}</style>
+</head>
+<body>
+  <main>
+    <h1>${siteName.trim().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c] || c))}</h1>
+    <p>${siteDescription.trim().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c] || c)) || 'Your new website project is ready to customize.'}</p>
+    <p>Project source: <code>${folder}</code></p>
+  </main>
+</body>
+</html>`;
+      await writeGitHubFile(githubToken, `${folder}/project.json`, JSON.stringify(project, null, 2) + '\\n', `Create website project: ${siteName.trim()}`);
+      await writeGitHubFile(githubToken, `${folder}/index.html`, starterHtml + '\\n', `Add starter page: ${siteName.trim()}`);
+      const { data, error } = await supabase.from('managed_sites').insert({
+        user_id: user.id, name: siteName.trim(), site_url: siteUrl.trim() || null,
+        description: siteDescription.trim(), framework: 'static', status: 'draft'
+      }).select('id').single();
+      if (error) throw new Error(`GitHub project saved at ${folder}, but the dashboard record could not be created: ${error.message}`);
       setSiteName(''); setSiteUrl(''); setSiteDescription('');
       await loadSites(data.id); setActiveSiteId(data.id); setTab('content');
-      setNotice('Website workspace created. Add your first page in Content Studio.');
-    }
-    setBusy(false);
+      setNotice(`Project saved in GitHub at ${folder}. Starter index.html and project.json were created; workspace is ready for content editing.`);
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Could not create website project.');
+    } finally { setBusy(false); }
   }
   async function savePage(e: FormEvent) {
     e.preventDefault();
@@ -260,8 +299,8 @@ function App() {
           <div className="mt-7"><div className="mb-3 flex items-center justify-between"><h2 className="font-semibold">Recent websites</h2><button className="text-sm text-violet-200" onClick={() => setTab('sites')}>View all</button></div>{sites.length ? <div className="space-y-2">{sites.slice(0,4).map(s=><div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 p-4"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800"><Globe2 size={18}/></div><div><div className="font-medium">{s.name}</div><div className="text-xs text-slate-500">{s.site_url || 'No live URL connected yet'}</div></div></div><span className="pill">{s.status}</span></div>)}</div> : <Empty icon={<Globe2 size={24}/>} title="No website projects yet" detail="Create your first website workspace to begin." action="Create website" onAction={() => setTab('sites')}/>}</div>
         </>}
 
-        {tab === 'sites' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Project management</div><h1 className="mt-2 text-3xl font-bold">Websites</h1><p className="mt-2 text-sm text-slate-400">Create and manage independent website workspaces. Publishing/deployment connectors are the next integration layer.</p>
-          <form onSubmit={createSite} className="mt-6 grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><h2 className="font-semibold">Add a website</h2><div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm text-slate-300">Website / project name<input className="field mt-2" required maxLength={100} value={siteName} onChange={e => setSiteName(e.target.value)} placeholder="My portfolio"/></label><label className="block text-sm text-slate-300">Existing URL <span className="text-slate-600">(optional)</span><input className="field mt-2" type="url" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} placeholder="https://example.com"/></label></div><label className="block text-sm text-slate-300">Description<textarea className="field mt-2 min-h-20" value={siteDescription} onChange={e => setSiteDescription(e.target.value)} placeholder="What is this website for?"/></label><div><button disabled={busy} className="btn btn-primary disabled:opacity-50"><Plus size={17}/> Create website workspace</button></div></form>
+        {tab === 'sites' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Project management</div><h1 className="mt-2 text-3xl font-bold">Websites</h1><p className="mt-2 text-sm text-slate-400">Each new project is stored in the GitHub repository under webs/projects/<project-slug>/, with project.json and a starter index.html; dashboard settings are also stored in Supabase.</p>
+          <form onSubmit={createSite} className="mt-6 grid gap-4 rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><h2 className="font-semibold">Add a website</h2><div className="grid gap-4 sm:grid-cols-2"><label className="block text-sm text-slate-300">Website / project name<input className="field mt-2" required maxLength={100} value={siteName} onChange={e => setSiteName(e.target.value)} placeholder="My portfolio"/></label><label className="block text-sm text-slate-300">Existing URL <span className="text-slate-600">(optional)</span><input className="field mt-2" type="url" value={siteUrl} onChange={e => setSiteUrl(e.target.value)} placeholder="https://example.com"/></label></div><label className="block text-sm text-slate-300">Description<textarea className="field mt-2 min-h-20" value={siteDescription} onChange={e => setSiteDescription(e.target.value)} placeholder="What is this website for?"/></label><div><button disabled={busy} className="btn btn-primary disabled:opacity-50"><Plus size={17}/> Create website project</button></div></form>
           <div className="mt-7"><h2 className="mb-3 font-semibold">Your websites ({sites.length})</h2>{sites.length ? <div className="grid gap-3 md:grid-cols-2">{sites.map(s=><div key={s.id} className={'rounded-2xl border p-5 '+(activeSiteId===s.id?'border-violet-300/40 bg-violet-300/[.04]':'border-slate-800 bg-slate-950/40')}><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-300/10 text-violet-200"><Globe2 size={20}/></div><div><h3 className="font-semibold">{s.name}</h3><p className="mt-1 text-xs text-slate-500">{s.site_url || 'Draft workspace'}</p></div></div><span className="pill">{s.status}</span></div>{s.description && <p className="mt-3 text-sm text-slate-400">{s.description}</p>}<div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-quiet text-xs" onClick={() => {setActiveSiteId(s.id);setTab('content')}}>Manage content <FileText size={14}/></button>{s.site_url && <a className="btn btn-quiet text-xs" href={s.site_url} target="_blank" rel="noreferrer">Open site <ExternalLink size={14}/></a>}</div></div>)}</div> : <Empty icon={<Globe2 size={24}/>} title="Start with your first site" detail="A website workspace stores its pages and project settings."/>}</div>
         </>}
 
