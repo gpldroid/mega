@@ -46,6 +46,8 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+      - name: Install Android SDK platform
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
@@ -77,7 +79,7 @@ jobs:
           mkdir -p "android/app/src/main/java/$PKG_PATH"
           export PKG_PATH
           python3 - <<'PY'
-          import os, pathlib, re, html
+          import os, pathlib, re, html, json
           root=pathlib.Path("android")
           pkg=os.environ["PACKAGE_NAME"]
           path=root/"app/src/main/java"/os.environ["PKG_PATH"]
@@ -105,7 +107,7 @@ jobs:
             @Override public void onCreate(Bundle state) { super.onCreate(state); getWindow().setStatusBarColor(Color.parseColor("%s")); getWindow().setNavigationBarColor(Color.parseColor("%s"));
               WebView web = new WebView(this); WebSettings settings = web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setLoadWithOverviewMode(true); settings.setUseWideViewPort(true); web.setWebViewClient(new WebViewClient()); web.setWebChromeClient(new WebChromeClient()); setContentView(web); web.loadUrl("%s"); }
             @Override public void onBackPressed() { WebView w=(WebView)((android.view.ViewGroup)findViewById(android.R.id.content)).getChildAt(0); if(w!=null && w.canGoBack()) w.goBack(); else super.onBackPressed(); }
-          }''' % (pkg,color,color,url)
+          }''' % (pkg,color,color,url_literal)
           (path/"MainActivity.java").write_text(activity)
           (root/"app/src/main/res").mkdir(parents=True,exist_ok=True)
           PY
