@@ -1,5 +1,6 @@
 import React from 'react';
-import { createRoot, type ErrorInfo, type ReactNode } from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
+import type { ErrorInfo, ReactNode } from 'react';
 import App from './App';
 import './styles.css';
 
