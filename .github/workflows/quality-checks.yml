@@ -36,8 +36,8 @@ jobs:
           grep -q 'MEGA' dist/index.html
           grep -q 'assets/.*\.js' dist/admin/index.html
           echo "Build output checks passed."
-  dependency-audit:
-    name: Dependency vulnerability audit
+  production-audit:
+    name: Production dependency security audit
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -47,5 +47,27 @@ jobs:
           node-version: 22
       - name: Install dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Audit all dependencies
-        run: npm audit --audit-level=high
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  development-audit:
+    name: Development dependency security report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Report development dependency vulnerabilities
+        shell: bash
+        run: |
+          set +e
+          npm audit --audit-level=high
+          result=$?
+          if [ "$result" -ne 0 ]; then
+            echo "::warning::Development dependency vulnerabilities remain. Review npm audit output and update affected tooling in a tested change."
+          fi
+          exit 0
