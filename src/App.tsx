@@ -311,7 +311,8 @@ function App() {
   const nav: { id: Tab; label: string; icon: React.ReactNode; group: string }[] = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard size={17}/>, group: 'WORKSPACE' },
     { id: 'sites', label: 'Websites', icon: <Globe2 size={17}/>, group: 'WORKSPACE' },
-    { id: 'content', label: 'Content Studio', icon: <FileText size={17}/>, group: 'WORKSPACE' },\n    { id: 'developer', label: 'Code & Import Pro', icon: <FileCode2 size={17}/>, group: 'WORKSPACE' },
+    { id: 'content', label: 'Content Studio', icon: <FileText size={17}/>, group: 'WORKSPACE' },
+    { id: 'developer', label: 'Code & Import Pro', icon: <FileCode2 size={17}/>, group: 'WORKSPACE' },
     { id: 'android', label: 'Android Builder', icon: <Smartphone size={17}/>, group: 'BUILD TOOLS' },
     { id: 'history', label: 'Build history', icon: <History size={17}/>, group: 'BUILD TOOLS' },
     { id: 'devops', label: 'GitHub DevOps', icon: <GitBranch size={17}/>, group: 'BUILD TOOLS' },
