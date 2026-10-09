@@ -137,7 +137,7 @@ jobs:
           cd android && zip -qr "../release/mega-${BUILD_ID}-source.zip" . -x '**/.gradle/**' '**/build/**'
       - name: Publish build assets as a GitHub Release
         id: release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: build-${{ env.BUILD_ID }}
           name: MEGA build ${{ env.BUILD_ID }}
