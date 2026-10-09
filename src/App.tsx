@@ -18,13 +18,14 @@ type Build = {
   aab_url: string | null; source_zip_url: string | null; error_message: string | null;
   projects?: { name: string; website_url: string; package_name: string } | null
 };
-type ManagedSite = { id: string; name: string; site_url: string | null; description: string; framework: string; status: 'draft'|'published'|'archived'; updated_at: string };
+type ManagedSite = { id: string; name: string; site_url: string | null; description: string; framework: string; project_path: string | null; status: 'draft'|'published'|'archived'; updated_at: string };
 type SitePage = { id: string; site_id: string; title: string; slug: string; body: string; status: 'draft'|'published'; updated_at: string };
 type WorkflowRun = { id: number; name: string; status: string; conclusion: string | null; html_url: string; head_branch: string; head_sha: string; created_at: string; display_title: string };
 const statusText: Record<string,string> = { pending: 'Queued', building: 'Building', completed: 'Ready', failed: 'Failed' };
 const emptyPage = { title: 'New page', slug: 'new-page', body: '', status: 'draft' as const };
 function validUrl(value: string) { try { const u = new URL(value); return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password; } catch { return false; } }
 function slugify(value: string) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new-page'; }
+function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;'); }
 function encodeBase64(value: string) { const bytes = new TextEncoder().encode(value); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }
 async function writeGitHubFile(token: string, path: string, content: string, message: string) {
   const response = await fetch(`https://api.github.com/repos/gpldroid/mega/contents/${path.split('/').map(encodeURIComponent).join('/')}`, {
@@ -96,7 +97,7 @@ function App() {
   }
   async function loadSites(preferredId?: string) {
     if (!user) return;
-    const { data, error } = await supabase.from('managed_sites').select('id,name,site_url,description,framework,status,updated_at').order('updated_at', { ascending: false });
+    const { data, error } = await supabase.from('managed_sites').select('id,name,site_url,description,framework,project_path,status,updated_at').order('updated_at', { ascending: false });
     if (error) { setNotice('Could not load websites: ' + error.message); return; }
     const rows = (data ?? []) as ManagedSite[];
     setSites(rows);
@@ -197,7 +198,7 @@ function App() {
       await writeGitHubFile(githubToken, `${folder}/index.html`, starterHtml + '\n', `Add starter page: ${siteName.trim()}`);
       const { data, error } = await supabase.from('managed_sites').insert({
         user_id: user.id, name: siteName.trim(), site_url: siteUrl.trim() || null,
-        description: siteDescription.trim(), framework: 'static', status: 'draft'
+        description: siteDescription.trim(), framework: 'static', project_path: folder, status: 'draft'
       }).select('id').single();
       if (error) throw new Error(`GitHub project saved at ${folder}, but the dashboard record could not be created: ${error.message}`);
       setSiteName(''); setSiteUrl(''); setSiteDescription('');
@@ -211,19 +212,62 @@ function App() {
     e.preventDefault();
     if (!user || !activeSiteId) { setNotice('Create or select a website first.'); return; }
     const slug = slugify(pageDraft.slug || pageDraft.title);
+    if (!pageDraft.title.trim()) { setNotice('Enter a page title.'); return; }
     setBusy(true); setNotice('');
-    const payload = { site_id: activeSiteId, user_id: user.id, title: pageDraft.title.trim(), slug, body: pageDraft.body, status: pageDraft.status };
-    const result = activePageId
-      ? await supabase.from('site_pages').update(payload).eq('id', activePageId).select('id').single()
-      : await supabase.from('site_pages').insert(payload).select('id').single();
-    if (result.error) setNotice('Could not save page: ' + result.error.message);
-    else {
+    try {
+      const payload = { site_id: activeSiteId, user_id: user.id, title: pageDraft.title.trim(), slug, body: pageDraft.body, status: pageDraft.status };
+      const result = activePageId
+        ? await supabase.from('site_pages').update(payload).eq('id', activePageId).select('id').single()
+        : await supabase.from('site_pages').insert(payload).select('id').single();
+      if (result.error) throw new Error('Could not save page in Supabase: ' + result.error.message);
+
       setActivePageId(result.data.id);
       setPageDraft({ ...pageDraft, slug });
       await loadPages(activeSiteId);
-      setNotice('Page saved to Supabase.');
+
+      const site = sites.find(item => item.id === activeSiteId);
+      if (!site?.project_path) {
+        setNotice('Page saved to Supabase. This older website has no GitHub project path yet, so repository sync is unavailable for it.');
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      const githubToken = session?.provider_token;
+      if (!githubToken) {
+        setNotice('Page saved to Supabase. To also sync it to GitHub, sign in again using the GitHub button and approve repository access.');
+        return;
+      }
+
+      const safeTitle = escapeHtml(pageDraft.title.trim());
+      const safeBody = pageDraft.body.trim()
+        ? pageDraft.body.trim().split(/\n\s*\n/).map(paragraph => '<p>' + escapeHtml(paragraph).replace(/\n/g, '<br>') + '</p>').join('\n    ')
+        : '<p></p>';
+      const pageHtml = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${safeTitle}</title>
+  <style>body{font-family:system-ui,sans-serif;max-width:760px;margin:8vh auto;padding:24px;line-height:1.8;color:#172033}h1{font-size:clamp(2rem,6vw,3.5rem)}a{color:#5145cd}</style>
+</head>
+<body>
+  <main>
+    <p><a href="../index.html">← Home</a></p>
+    <h1>${safeTitle}</h1>
+    ${safeBody}
+    <p><small>Content status: ${pageDraft.status}</small></p>
+  </main>
+</body>
+</html>
+`;
+      const filePath = `${site.project_path}/pages/${slug}.html`;
+      await writeGitHubFile(githubToken, filePath, pageHtml, `Sync website page: ${pageDraft.title.trim()}`);
+      setNotice(`Page saved to Supabase and synced to GitHub: ${filePath}. This writes the source file; it does not publish a live website by itself.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not save page.');
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   }
   async function submitBuild(e: FormEvent) {
     e.preventDefault();
@@ -304,9 +348,9 @@ function App() {
           <div className="mt-7"><h2 className="mb-3 font-semibold">Your websites ({sites.length})</h2>{sites.length ? <div className="grid gap-3 md:grid-cols-2">{sites.map(s=><div key={s.id} className={'rounded-2xl border p-5 '+(activeSiteId===s.id?'border-violet-300/40 bg-violet-300/[.04]':'border-slate-800 bg-slate-950/40')}><div className="flex items-start justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-300/10 text-violet-200"><Globe2 size={20}/></div><div><h3 className="font-semibold">{s.name}</h3><p className="mt-1 text-xs text-slate-500">{s.site_url || 'Draft workspace'}</p></div></div><span className="pill">{s.status}</span></div>{s.description && <p className="mt-3 text-sm text-slate-400">{s.description}</p>}<div className="mt-5 flex flex-wrap gap-2"><button className="btn btn-quiet text-xs" onClick={() => {setActiveSiteId(s.id);setTab('content')}}>Manage content <FileText size={14}/></button>{s.site_url && <a className="btn btn-quiet text-xs" href={s.site_url} target="_blank" rel="noreferrer">Open site <ExternalLink size={14}/></a>}</div></div>)}</div> : <Empty icon={<Globe2 size={24}/>} title="Start with your first site" detail="A website workspace stores its pages and project settings."/>}</div>
         </>}
 
-        {tab === 'content' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Website editor</div><h1 className="mt-2 text-3xl font-bold">Content Studio</h1><p className="mt-2 text-sm text-slate-400">Create pages, edit copy and save drafts in your website workspace.</p>
+        {tab === 'content' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Website editor</div><h1 className="mt-2 text-3xl font-bold">Content Studio</h1><p className="mt-2 text-sm text-slate-400">Create pages, edit copy and sync page HTML into your GitHub project folder.</p>
           {!sites.length ? <Empty icon={<Globe2 size={24}/>} title="Create a website first" detail="Pages belong to a website project." action="Go to Websites" onAction={() => setTab('sites')}/> : <div className="mt-6 grid gap-5 xl:grid-cols-[240px_minmax(0,1fr)]"><aside className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4"><label className="block text-xs text-slate-500">WEBSITE<select className="field mt-2" value={activeSiteId} onChange={e => {setActiveSiteId(e.target.value);setActivePageId('');setPageDraft(emptyPage)}}>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><div className="mb-3 mt-6 flex items-center justify-between"><h2 className="text-sm font-semibold">Pages</h2><button title="New page" onClick={() => {setActivePageId('');setPageDraft(emptyPage)}} className="rounded-lg border border-slate-700 p-2 text-violet-200"><Plus size={15}/></button></div>{pages.map(p=><button key={p.id} onClick={() => {setActivePageId(p.id);setPageDraft({title:p.title,slug:p.slug,body:p.body,status:p.status})}} className={'mb-2 w-full rounded-xl p-3 text-left '+(activePageId===p.id?'bg-violet-300/10 text-violet-100':'text-slate-400 hover:bg-white/5')}><div className="truncate text-sm font-medium">{p.title}</div><div className="mt-1 truncate text-[11px] text-slate-500">/{p.slug} · {p.status}</div></button>)}{!pages.length && <p className="py-3 text-xs leading-5 text-slate-500">No pages yet. Create one using +.</p>}</aside>
-            <form onSubmit={savePage} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{activePage ? 'Edit page' : 'Create a page'}</h2><p className="mt-1 text-xs text-slate-500">Website: {activeSite?.name || 'Selected project'}</p></div><span className="pill">{pageDraft.status}</span></div><label className="block text-sm text-slate-300">Page title<input className="field mt-2" required maxLength={160} value={pageDraft.title} onChange={e => setPageDraft(d=>({...d,title:e.target.value,slug:activePageId?d.slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">URL slug<input className="field mt-2" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={pageDraft.slug} onChange={e => setPageDraft(d=>({...d,slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">Page content / draft<textarea className="field mt-2 min-h-64 resize-y leading-7" value={pageDraft.body} onChange={e => setPageDraft(d=>({...d,body:e.target.value}))} placeholder="Write your page content here…"/></label><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={pageDraft.status==='published'} onChange={e=>setPageDraft(d=>({...d,status:e.target.checked?'published':'draft'}))}/> Mark as published in workspace</label><button disabled={busy} className="btn btn-primary disabled:opacity-50"><Save size={16}/>{busy?'Saving…':'Save page'}</button></div><p className="mt-4 text-xs leading-5 text-slate-500">“Published” currently records the content status in the database; it does not deploy a live site yet. The GitHub deployment connector is a subsequent phase.</p></form></div>}
+            <form onSubmit={savePage} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{activePage ? 'Edit page' : 'Create a page'}</h2><p className="mt-1 text-xs text-slate-500">Website: {activeSite?.name || 'Selected project'}</p></div><span className="pill">{pageDraft.status}</span></div><label className="block text-sm text-slate-300">Page title<input className="field mt-2" required maxLength={160} value={pageDraft.title} onChange={e => setPageDraft(d=>({...d,title:e.target.value,slug:activePageId?d.slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">URL slug<input className="field mt-2" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={pageDraft.slug} onChange={e => setPageDraft(d=>({...d,slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">Page content / draft<textarea className="field mt-2 min-h-64 resize-y leading-7" value={pageDraft.body} onChange={e => setPageDraft(d=>({...d,body:e.target.value}))} placeholder="Write your page content here…"/></label><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={pageDraft.status==='published'} onChange={e=>setPageDraft(d=>({...d,status:e.target.checked?'published':'draft'}))}/> Mark as published in workspace</label><button disabled={busy} className="btn btn-primary disabled:opacity-50"><Save size={16}/>{busy?'Saving…':'Save page'}</button></div><p className="mt-4 text-xs leading-5 text-slate-500">Saving stores the page in Supabase and, when GitHub access is available, writes an HTML source file under webs/projects/&lt;project&gt;/pages/. This does not publish a live website automatically.</p></form></div>}
         </>}
 
         {tab === 'android' && <><div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Build tools</div><h1 className="mt-2 text-3xl font-bold">Android Builder</h1><p className="mt-2 text-sm text-slate-400">Configure a website and request APK, AAB and source ZIP artifacts.</p></div><span className="pill">Free-tier pipeline</span></div>
