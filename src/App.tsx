@@ -32,7 +32,7 @@ async function writeGitHubFile(token: string, path: string, content: string, mes
     body: JSON.stringify({ message, content: encodeBase64(content), branch: 'main' })
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'GitHub refused repository write access. Sign in with GitHub again and approve repository access (repo scope) in Supabase GitHub provider settings.' : `GitHub could not save ${path}: ${data.message || `HTTP ${response.status}`}`);
+  if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'GitHub refused repository write access. Sign in with GitHub again and approve public repository write access (public_repo scope) in Supabase GitHub provider settings.' : `GitHub could not save ${path}: ${data.message || `HTTP ${response.status}`}`);
   return data;
 }
 
@@ -156,7 +156,7 @@ function App() {
     setBusy(true); setNotice('');
     try {
       const redirectTo = new URL('/mega/', window.location.origin).toString();
-      const { error } = await supabase.auth.signInWithOAuth({ provider: 'github', options: { redirectTo, scopes: 'repo' } });
+      const { error } = await supabase.auth.signInWithOAuth({ provider: 'github', options: { redirectTo, scopes: 'public_repo' } });
       if (error) throw error;
     } catch (e) { setNotice(e instanceof Error ? e.message : 'GitHub sign-in could not start'); setBusy(false); }
   }
