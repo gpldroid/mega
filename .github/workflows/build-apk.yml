@@ -60,6 +60,19 @@ jobs:
           [[ "$USER_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
           [[ "$PACKAGE_NAME" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]]
           [[ "$WEBSITE_URL" == https://* || "$WEBSITE_URL" == http://* ]]
+          [[ "$APP_NAME" =~ [^[:space:]] ]]
+          [[ ${#APP_NAME} -le 60 ]]
+          [[ "$SPLASH_COLOR" =~ ^#[0-9a-fA-F]{6}$ ]]
+          python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          value = os.environ["WEBSITE_URL"]
+          parsed = urlparse(value)
+          if parsed.scheme not in ("https", "http") or not parsed.hostname:
+              raise SystemExit("WEBSITE_URL must be a valid HTTP(S) URL with a hostname")
+          if parsed.username or parsed.password:
+              raise SystemExit("WEBSITE_URL must not contain embedded credentials")
+          PY
           echo "Build request validated"
       - name: Mark build as building
         run: |
@@ -99,7 +112,8 @@ jobs:
           if not url.startswith(("https://","http://")): raise SystemExit("Invalid URL scheme")
           url_literal=json.dumps(url, ensure_ascii=False)
           color=os.environ.get("SPLASH_COLOR","#111827")
-          manifest=f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="{name}" android:usesCleartextTraffic="true"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'''
+          cleartext = "true" if url.startswith("http://") else "false"
+          manifest=f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="{name}" android:usesCleartextTraffic="{cleartext}"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'''
           (root/"app/src/main/AndroidManifest.xml").write_text(manifest)
           activity='''package %s;
           import android.app.Activity; import android.os.Bundle; import android.graphics.Color; import android.webkit.WebView; import android.webkit.WebViewClient; import android.webkit.WebChromeClient; import android.webkit.WebSettings; import android.view.View; import android.view.Window; import android.view.WindowManager;
