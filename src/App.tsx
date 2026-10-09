@@ -3,7 +3,7 @@ import { createClient, type User } from '@supabase/supabase-js';
 import {
   Activity, ArrowUpRight, CheckCircle2, CircleHelp, Clock3, Code2, Download,
   ExternalLink, FileText, Github, Globe2, History, LayoutDashboard, LogIn,
-  LogOut, Plus, Rocket, Save, ShieldCheck, Smartphone, Sparkles, Terminal,
+  LogOut, Plus, Rocket, Save, ShieldCheck, Smartphone, Sparkles, Terminal, GitBranch, RefreshCw,
   WandSparkles, XCircle
 } from 'lucide-react';
 
@@ -11,7 +11,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://upajzbaeuwzbhx
 const supabaseKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) || 'sb_publishable_tvp9Kreo5aMpK-aEU3AteA_axQbYhDP';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-type Tab = 'overview' | 'sites' | 'content' | 'android' | 'history' | 'admin';
+type Tab = 'overview' | 'sites' | 'content' | 'android' | 'history' | 'devops' | 'admin';
 type Profile = { role: string; display_name: string | null };
 type Build = {
   id: string; status: string; requested_at: string; apk_url: string | null;
@@ -19,7 +19,7 @@ type Build = {
   projects?: { name: string; website_url: string; package_name: string } | null
 };
 type ManagedSite = { id: string; name: string; site_url: string | null; description: string; framework: string; status: 'draft'|'published'|'archived'; updated_at: string };
-type SitePage = { id: string; site_id: string; title: string; slug: string; body: string; status: 'draft'|'published'; updated_at: string };
+type SitePage = { id: string; site_id: string; title: string; slug: string; body: string; status: 'draft'|'published'; updated_at: string };\ntype WorkflowRun = { id: number; name: string; status: string; conclusion: string | null; html_url: string; head_branch: string; head_sha: string; created_at: string; display_title: string };
 const statusText: Record<string,string> = { pending: 'Queued', building: 'Building', completed: 'Ready', failed: 'Failed' };
 const emptyPage = { title: 'New page', slug: 'new-page', body: '', status: 'draft' as const };
 function validUrl(value: string) { try { const u = new URL(value); return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password; } catch { return false; } }
@@ -36,7 +36,7 @@ function App() {
   const [builds, setBuilds] = useState<Build[]>([]);
   const [loadingBuilds, setLoadingBuilds] = useState(false);
   const [sites, setSites] = useState<ManagedSite[]>([]);
-  const [pages, setPages] = useState<SitePage[]>([]);
+  const [pages, setPages] = useState<SitePage[]>([]);\n  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);\n  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
   const [activeSiteId, setActiveSiteId] = useState('');
   const [activePageId, setActivePageId] = useState('');
   const [siteName, setSiteName] = useState('');
@@ -89,6 +89,19 @@ function App() {
     setActiveSiteId(nextId);
     if (!nextId) { setPages([]); setActivePageId(''); }
   }
+  async function loadWorkflowRuns() {
+    setLoadingWorkflows(true);
+    try {
+      const response = await fetch('https://api.github.com/repos/gpldroid/mega/actions/runs?per_page=8');
+      if (!response.ok) throw new Error(response.status === 403 ? 'GitHub API rate limit reached. Open the repository Actions page to inspect runs.' : 'GitHub API returned HTTP ' + response.status);
+      const data = await response.json() as { workflow_runs?: WorkflowRun[] };
+      setWorkflowRuns(data.workflow_runs ?? []);
+    } catch (e) {
+      setNotice('Could not load GitHub Actions activity: ' + (e instanceof Error ? e.message : 'Unknown network error'));
+    } finally {
+      setLoadingWorkflows(false);
+    }
+  }
   async function loadPages(siteId: string) {
     if (!siteId) { setPages([]); setActivePageId(''); return; }
     const { data, error } = await supabase.from('site_pages').select('id,site_id,title,slug,body,status,updated_at').eq('site_id', siteId).order('updated_at', { ascending: false });
@@ -105,7 +118,7 @@ function App() {
     if (user) { void loadProfile(user); void loadBuilds(); void loadSites(); }
     else { setProfile(null); setBuilds([]); setSites([]); setPages([]); setActiveSiteId(''); }
   }, [user]);
-  useEffect(() => { if (user && activeSiteId) void loadPages(activeSiteId); }, [user, activeSiteId]);
+  useEffect(() => { if (user && activeSiteId) void loadPages(activeSiteId); }, [user, activeSiteId]);\n  useEffect(() => { if (user && tab === 'devops') void loadWorkflowRuns(); }, [user, tab]);
   useEffect(() => {
     if (!user) return;
     const timer = window.setInterval(() => { void loadBuilds(); }, 12000);
@@ -197,7 +210,7 @@ function App() {
     { id: 'sites', label: 'Websites', icon: <Globe2 size={17}/>, group: 'WORKSPACE' },
     { id: 'content', label: 'Content Studio', icon: <FileText size={17}/>, group: 'WORKSPACE' },
     { id: 'android', label: 'Android Builder', icon: <Smartphone size={17}/>, group: 'BUILD TOOLS' },
-    { id: 'history', label: 'Build history', icon: <History size={17}/>, group: 'BUILD TOOLS' },
+    { id: 'history', label: 'Build history', icon: <History size={17}/>, group: 'BUILD TOOLS' },\n    { id: 'devops', label: 'GitHub DevOps', icon: <GitBranch size={17}/>, group: 'BUILD TOOLS' },
     ...(profile?.role === 'admin' ? [{ id: 'admin' as Tab, label: 'Administration', icon: <ShieldCheck size={17}/>, group: 'SYSTEM' }] : [])
   ];
 
@@ -254,6 +267,7 @@ function App() {
 
         {tab === 'history' && <><div className="flex items-center justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Activity</div><h1 className="mt-2 text-3xl font-bold">Build history</h1></div><button className="btn btn-quiet text-xs" onClick={() => void loadBuilds()}><History size={15}/> Refresh</button></div><p className="mt-2 text-sm text-slate-400">Status refreshes automatically every 12 seconds.</p><div className="mt-6 space-y-3">{loadingBuilds && !builds.length ? <p className="py-8 text-center text-sm text-slate-500">Loading build history…</p> : builds.length === 0 ? <Empty icon={<Terminal size={24}/>} title="No builds yet" detail="Create your first Android app to see it here." action="Open Android Builder" onAction={() => setTab('android')}/> : builds.map(b=><div key={b.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="font-semibold">{b.projects?.name ?? 'Android build'}</div><div className="mt-1 max-w-sm truncate text-xs text-slate-500">{b.projects?.website_url ?? b.id}</div><div className="mt-2 text-[11px] text-slate-600">{new Date(b.requested_at).toLocaleString()}</div></div><span className={'pill flex items-center gap-1 '+(b.status==='completed'?'text-emerald-300':b.status==='failed'?'text-rose-300':'text-amber-200')}>{b.status==='completed'?<CheckCircle2 size={13}/>:b.status==='failed'?<XCircle size={13}/>:<Clock3 size={13}/>} {statusText[b.status]??b.status}</span></div>{b.error_message && <p className="mt-3 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-200">{b.error_message}</p>}{b.status==='completed' && <div className="mt-4 flex flex-wrap gap-2">{[[b.apk_url,'APK'],[b.aab_url,'AAB'],[b.source_zip_url,'Source ZIP']].filter(([url])=>url).map(([url,label])=><a key={label as string} className="btn btn-quiet text-xs" href={url as string} target="_blank" rel="noreferrer"><Download size={14}/>{label as string}</a>)}</div>}</div>)}</div></>}
 
+        {tab === 'devops' && <><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Delivery pipeline</div><h1 className="mt-2 text-3xl font-bold">GitHub DevOps</h1><p className="mt-2 text-sm text-slate-400">Recent workflow runs for the MEGA repository. Open a run to inspect build/deployment logs.</p></div><button className="btn btn-quiet text-xs" onClick={() => void loadWorkflowRuns()} disabled={loadingWorkflows}><RefreshCw size={15} className={loadingWorkflows?'animate-spin':''}/> Refresh runs</button></div><div className="mt-6 space-y-3">{loadingWorkflows && !workflowRuns.length ? <p className="py-8 text-center text-sm text-slate-500">Loading GitHub Actions…</p> : workflowRuns.length ? workflowRuns.map(run => <div key={run.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 flex-1"><div className="font-semibold">{run.display_title || run.name}</div><div className="mt-1 text-xs text-slate-500">{run.name} · {run.head_branch} · {run.head_sha.slice(0,7)}</div><div className="mt-2 text-[11px] text-slate-600">{new Date(run.created_at).toLocaleString()}</div></div><span className={'pill '+(run.conclusion==='success'?'text-emerald-300':run.conclusion==='failure'?'text-rose-300':'text-amber-200')}>{run.conclusion || run.status}</span></div><a href={run.html_url} target="_blank" rel="noreferrer" className="btn btn-quiet mt-4 text-xs">Open run logs <ExternalLink size={14}/></a></div>) : <Empty icon={<GitBranch size={24}/>} title="No workflow runs found" detail="Check the repository Actions page for current workflow activity."/>}</div><div className="mt-6 rounded-2xl border border-amber-300/15 bg-amber-300/[.04] p-4"><div className="font-semibold text-amber-100">Integration boundary</div><p className="mt-2 text-sm leading-6 text-slate-400">This panel reads public workflow activity for gpldroid/mega. Dispatching workflows, managing repository secrets, or deploying arbitrary new repositories requires a separately authorized GitHub App/token and must run server-side—not in this public frontend.</p><a className="mt-3 inline-flex items-center gap-2 text-sm text-violet-200" href="https://github.com/gpldroid/mega/actions" target="_blank" rel="noreferrer">Open repository Actions <ExternalLink size={14}/></a></div></>}
         {tab === 'admin' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">System</div><h1 className="mt-2 text-3xl font-bold">Administration</h1><p className="mt-2 text-sm text-slate-400">Admin access detected. User roles must be managed securely in Supabase, never in client-side form fields.</p><div className="mt-6 grid gap-3 sm:grid-cols-3">{[['Websites',sites.length],['Completed builds',counts.ready],['In progress',counts.running]].map(([t,n])=><div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4" key={t}><div className="text-2xl font-bold">{n}</div><div className="mt-1 text-xs text-slate-500">{t}</div></div>)}</div><a className="btn btn-quiet mt-5" href="https://github.com/gpldroid/mega/actions" target="_blank" rel="noreferrer">View GitHub Actions <ExternalLink size={15}/></a></>}
         {notice && <Notice message={notice} clear={() => setNotice('')}/>}
       </section>
