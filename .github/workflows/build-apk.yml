@@ -1,0 +1,154 @@
+name: Build Android app
+on:
+  repository_dispatch:
+    types: [mega-build]
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: Existing builds row UUID
+        required: true
+      project_id:
+        description: Project UUID
+        required: true
+      user_id:
+        description: Supabase user UUID
+        required: true
+      app_name:
+        description: Android app name
+        required: true
+      website_url:
+        description: Website URL
+        required: true
+      package_name:
+        description: Android package ID
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: mega-build-${{ github.event.client_payload.build_id || inputs.build_id }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      BUILD_ID: ${{ github.event.client_payload.build_id || inputs.build_id }}
+      PROJECT_ID: ${{ github.event.client_payload.project_id || inputs.project_id }}
+      USER_ID: ${{ github.event.client_payload.user_id || inputs.user_id }}
+      APP_NAME: ${{ github.event.client_payload.app_name || inputs.app_name }}
+      WEBSITE_URL: ${{ github.event.client_payload.website_url || inputs.website_url }}
+      PACKAGE_NAME: ${{ github.event.client_payload.package_name || inputs.package_name }}
+      SPLASH_COLOR: ${{ github.event.client_payload.splash_color || '#111827' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Validate build request
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$BUILD_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+          [[ "$PROJECT_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+          [[ "$USER_ID" =~ ^[0-9a-fA-F-]{36}$ ]]
+          [[ "$PACKAGE_NAME" =~ ^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$ ]]
+          [[ "$WEBSITE_URL" == https://* || "$WEBSITE_URL" == http://* ]]
+          echo "Build request validated"
+      - name: Mark build as building
+        run: |
+          curl --fail-with-body -sS -X PATCH "$SUPABASE_URL/rest/v1/builds?id=eq.$BUILD_ID" \
+            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "Content-Type: application/json" -H "Prefer: return=minimal" \
+            --data '{"status":"building","started_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Generate Android project files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/src/main/java
+          PKG_PATH="${PACKAGE_NAME//./\/}"
+          mkdir -p "android/app/src/main/java/$PKG_PATH"
+          export PKG_PATH
+          python3 - <<'PY'
+          import os, pathlib, re, html
+          root=pathlib.Path("android")
+          pkg=os.environ["PACKAGE_NAME"]
+          path=root/"app/src/main/java"/os.environ["PKG_PATH"]
+          path.mkdir(parents=True, exist_ok=True)
+          (root/"settings.gradle").write_text("pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }\ndependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }\nrootProject.name = 'MEGAApp'\ninclude ':app'\n")
+          (root/"build.gradle").write_text("plugins { id 'com.android.application' version '8.7.3' apply false }\n")
+          (root/"gradle.properties").write_text("org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8\nandroid.useAndroidX=true\n")
+          (root/"app/build.gradle").write_text("""plugins { id 'com.android.application' }
+          android { namespace '%s'; compileSdk 35
+            defaultConfig { applicationId '%s'; minSdk 23; targetSdk 35; versionCode 1; versionName '1.0.0' }
+            signingConfigs { debug { } }
+            buildTypes { release { signingConfig signingConfigs.debug; minifyEnabled false } }
+          }
+          """ % (pkg,pkg))
+          name=os.environ["APP_NAME"].replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
+          url=os.environ["WEBSITE_URL"]
+          if not url.startswith(("https://","http://")): raise SystemExit("Invalid URL scheme")
+          url=url.replace("&","&amp;").replace('"',"&quot;").replace("<","&lt;").replace(">","&gt;")
+          color=os.environ.get("SPLASH_COLOR","#111827")
+          manifest=f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="{name}" android:usesCleartextTraffic="true"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'''
+          (root/"app/src/main/AndroidManifest.xml").write_text(manifest)
+          activity='''package %s;
+          import android.app.Activity; import android.os.Bundle; import android.graphics.Color; import android.webkit.WebView; import android.webkit.WebViewClient; import android.webkit.WebChromeClient; import android.webkit.WebSettings; import android.view.View; import android.view.Window; import android.view.WindowManager;
+          public class MainActivity extends Activity {
+            @Override public void onCreate(Bundle state) { super.onCreate(state); getWindow().setStatusBarColor(Color.parseColor("%s")); getWindow().setNavigationBarColor(Color.parseColor("%s"));
+              WebView web = new WebView(this); WebSettings settings = web.getSettings(); settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true); settings.setLoadWithOverviewMode(true); settings.setUseWideViewPort(true); web.setWebViewClient(new WebViewClient()); web.setWebChromeClient(new WebChromeClient()); setContentView(web); web.loadUrl("%s"); }
+            @Override public void onBackPressed() { WebView w=(WebView)((android.view.ViewGroup)findViewById(android.R.id.content)).getChildAt(0); if(w!=null && w.canGoBack()) w.goBack(); else super.onBackPressed(); }
+          }''' % (pkg,color,color,url)
+          (path/"MainActivity.java").write_text(activity)
+          (root/"app/src/main/res").mkdir(parents=True,exist_ok=True)
+          PY
+      - name: Build APK and AAB
+        working-directory: android
+        run: |
+          gradle --no-daemon assembleRelease bundleRelease
+      - name: Package Android source
+        run: |
+          mkdir -p release
+          cp android/app/build/outputs/apk/release/app-release.apk "release/mega-${BUILD_ID}.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "release/mega-${BUILD_ID}.aab"
+          cd android && zip -qr "../release/mega-${BUILD_ID}-source.zip" . -x '**/.gradle/**' '**/build/**'
+      - name: Publish build assets as a GitHub Release
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ env.BUILD_ID }}
+          name: MEGA build ${{ env.BUILD_ID }}
+          prerelease: true
+          files: release/*
+      - name: Mark build completed
+        if: success()
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          b=os.environ["BUILD_ID"]; tag="build-"+b
+          base=os.environ["GITHUB_SERVER_URL"]+"/"+os.environ["GITHUB_REPOSITORY"]+"/releases/download/"+tag+"/"
+          payload={"status":"completed","completed_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),"apk_url":base+"mega-"+b+".apk","aab_url":base+"mega-"+b+".aab","source_zip_url":base+"mega-"+b+"-source.zip","error_message":None}
+          req=urllib.request.Request(os.environ["SUPABASE_URL"]+"/rest/v1/builds?id=eq."+b,data=json.dumps(payload).encode(),method="PATCH",headers={"apikey":os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Authorization":"Bearer "+os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Content-Type":"application/json","Prefer":"return=minimal"})
+          urllib.request.urlopen(req).read()
+          PY
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Mark build failed
+        if: failure() && env.BUILD_ID != ''
+        continue-on-error: true
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          payload={"status":"failed","completed_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),"error_message":"GitHub Actions build failed. Open the workflow run logs for details."}
+          req=urllib.request.Request(os.environ["SUPABASE_URL"]+"/rest/v1/builds?id=eq."+os.environ["BUILD_ID"],data=json.dumps(payload).encode(),method="PATCH",headers={"apikey":os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Authorization":"Bearer "+os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Content-Type":"application/json","Prefer":"return=minimal"})
+          urllib.request.urlopen(req).read()
+          PY
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
