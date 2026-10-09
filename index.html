@@ -16,13 +16,28 @@
       #boot-status{font-size:13px;color:#c4b5fd}
     </style>
     <script>
-      window.addEventListener('error', function (event) {
+      function showStartupError(message) {
         var status = document.getElementById('boot-status');
         if (status && status.isConnected) {
-          status.textContent = 'Startup error: ' + (event.message || 'A required application file failed to load.');
+          status.textContent = 'Startup error: ' + message;
           status.style.color = '#fca5a5';
         }
+      }
+      window.addEventListener('error', function (event) {
+        showStartupError(event.message || 'A required application file failed to load. Check the JavaScript and CSS asset requests.');
       });
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event.reason;
+        showStartupError(reason && reason.message ? reason.message : 'An unhandled startup promise failed.');
+      });
+      window.setTimeout(function () {
+        var screen = document.getElementById('boot-screen');
+        var status = document.getElementById('boot-status');
+        if (screen && screen.isConnected && status && status.textContent === 'Checking application files…') {
+          status.textContent = 'Startup timed out: the application did not mount. Reload once; if this persists, check the browser network log for the assets/index-*.js request.';
+          status.style.color = '#fca5a5';
+        }
+      }, 12000);
     </script>
   </head>
   <body>
