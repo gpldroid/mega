@@ -27,7 +27,7 @@ function validUrl(value: string) { try { const u = new URL(value); return ['http
 function slugify(value: string) { return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'new-page'; }
 function escapeHtml(value: string) { return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;'); }
 function encodeBase64(value: string) { const bytes = new TextEncoder().encode(value); let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte); return btoa(binary); }
-function decodeBase64(value: string) { const binary = atob(value.replace(/\\s/g, '')); const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0)); return new TextDecoder().decode(bytes); }
+function decodeBase64(value: string) { const binary = atob(value.replace(/\s/g, '')); const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0)); return new TextDecoder().decode(bytes); }
 function safeRepoPath(value: string) { return value.split('/').filter(Boolean).map(part => part.replace(/[^a-zA-Z0-9._-]/g, '-')).filter(part => part !== '.' && part !== '..').join('/'); }
 async function writeGitHubFile(token: string, path: string, content: string, message: string) {
   const response = await fetch(`https://api.github.com/repos/gpldroid/mega/contents/${path.split('/').map(encodeURIComponent).join('/')}`, {
