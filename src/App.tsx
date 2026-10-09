@@ -19,7 +19,8 @@ type Build = {
   projects?: { name: string; website_url: string; package_name: string } | null
 };
 type ManagedSite = { id: string; name: string; site_url: string | null; description: string; framework: string; status: 'draft'|'published'|'archived'; updated_at: string };
-type SitePage = { id: string; site_id: string; title: string; slug: string; body: string; status: 'draft'|'published'; updated_at: string };\ntype WorkflowRun = { id: number; name: string; status: string; conclusion: string | null; html_url: string; head_branch: string; head_sha: string; created_at: string; display_title: string };
+type SitePage = { id: string; site_id: string; title: string; slug: string; body: string; status: 'draft'|'published'; updated_at: string };
+type WorkflowRun = { id: number; name: string; status: string; conclusion: string | null; html_url: string; head_branch: string; head_sha: string; created_at: string; display_title: string };
 const statusText: Record<string,string> = { pending: 'Queued', building: 'Building', completed: 'Ready', failed: 'Failed' };
 const emptyPage = { title: 'New page', slug: 'new-page', body: '', status: 'draft' as const };
 function validUrl(value: string) { try { const u = new URL(value); return ['https:', 'http:'].includes(u.protocol) && !u.username && !u.password; } catch { return false; } }
@@ -36,7 +37,9 @@ function App() {
   const [builds, setBuilds] = useState<Build[]>([]);
   const [loadingBuilds, setLoadingBuilds] = useState(false);
   const [sites, setSites] = useState<ManagedSite[]>([]);
-  const [pages, setPages] = useState<SitePage[]>([]);\n  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);\n  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
+  const [pages, setPages] = useState<SitePage[]>([]);
+  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRun[]>([]);
+  const [loadingWorkflows, setLoadingWorkflows] = useState(false);
   const [activeSiteId, setActiveSiteId] = useState('');
   const [activePageId, setActivePageId] = useState('');
   const [siteName, setSiteName] = useState('');
@@ -118,7 +121,8 @@ function App() {
     if (user) { void loadProfile(user); void loadBuilds(); void loadSites(); }
     else { setProfile(null); setBuilds([]); setSites([]); setPages([]); setActiveSiteId(''); }
   }, [user]);
-  useEffect(() => { if (user && activeSiteId) void loadPages(activeSiteId); }, [user, activeSiteId]);\n  useEffect(() => { if (user && tab === 'devops') void loadWorkflowRuns(); }, [user, tab]);
+  useEffect(() => { if (user && activeSiteId) void loadPages(activeSiteId); }, [user, activeSiteId]);
+  useEffect(() => { if (user && tab === 'devops') void loadWorkflowRuns(); }, [user, tab]);
   useEffect(() => {
     if (!user) return;
     const timer = window.setInterval(() => { void loadBuilds(); }, 12000);
@@ -210,7 +214,8 @@ function App() {
     { id: 'sites', label: 'Websites', icon: <Globe2 size={17}/>, group: 'WORKSPACE' },
     { id: 'content', label: 'Content Studio', icon: <FileText size={17}/>, group: 'WORKSPACE' },
     { id: 'android', label: 'Android Builder', icon: <Smartphone size={17}/>, group: 'BUILD TOOLS' },
-    { id: 'history', label: 'Build history', icon: <History size={17}/>, group: 'BUILD TOOLS' },\n    { id: 'devops', label: 'GitHub DevOps', icon: <GitBranch size={17}/>, group: 'BUILD TOOLS' },
+    { id: 'history', label: 'Build history', icon: <History size={17}/>, group: 'BUILD TOOLS' },
+    { id: 'devops', label: 'GitHub DevOps', icon: <GitBranch size={17}/>, group: 'BUILD TOOLS' },
     ...(profile?.role === 'admin' ? [{ id: 'admin' as Tab, label: 'Administration', icon: <ShieldCheck size={17}/>, group: 'SYSTEM' }] : [])
   ];
 
