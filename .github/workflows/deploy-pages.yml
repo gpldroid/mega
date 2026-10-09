@@ -23,21 +23,22 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://upajzbaeuwzbhxfebzvi.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-      - name: Verify independent public and admin builds
+      - name: Verify public page and compiled admin assets
         shell: bash
         run: |
           set -euo pipefail
           test -s dist/index.html
           test -s dist/admin/index.html
-          if grep -Eq 'src="/src/|src="../src/|href="/src/' dist/index.html dist/admin/index.html; then
-            echo "ERROR: A deployed HTML entry still points to source files instead of built assets."
+          # The public landing page is intentionally static HTML and needs no JavaScript bundle.
+          grep -q 'MEGA' dist/index.html
+          # The admin page must be compiled by Vite, not shipped as raw TSX source.
+          if grep -Eq 'src="../src/main.tsx"|src="/src/main.tsx"' dist/admin/index.html; then
+            echo "ERROR: Admin HTML still points to a source TypeScript file."
             exit 1
           fi
-          grep -Eq 'assets/.*\.js' dist/index.html
           grep -Eq '\.\./assets/.*\.js' dist/admin/index.html
-          grep -Eq 'assets/.*\.css' dist/index.html
           grep -Eq '\.\./assets/.*\.css' dist/admin/index.html
-          echo "Verified separate public and admin HTML entries with built JS/CSS assets."
+          echo "Verified static public page and compiled admin JS/CSS assets."
       # Preserve generated website projects; Vite only copies files from public/ into dist.
       - name: Include managed website projects
         run: |
