@@ -4,7 +4,8 @@ import { ArrowDown, ArrowUpRight, CheckCircle2, CircleHelp, Clock3, Code2, Downl
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://upajzbaeuwzbhxfebzvi.supabase.co';
 const supabaseKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined;
-const supabase = supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+if (!supabaseKey) throw new Error('Missing VITE_SUPABASE_PUBLISHABLE_KEY. Configure it in .env.local and the GitHub Pages build environment.');
+const supabase = createClient(supabaseUrl, supabaseKey);
 type Build = { id:string; status:string; requested_at:string; apk_url:string|null; aab_url:string|null; source_zip_url:string|null; error_message:string|null; projects?:{name:string;website_url:string;package_name:string}|null };
 type Profile = {role:string; display_name:string|null};
 const statusText: Record<string,string> = {pending:'Queued',building:'Building',completed:'Ready',failed:'Failed'};
