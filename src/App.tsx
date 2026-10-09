@@ -143,7 +143,7 @@ function App() {
   async function signInWithGithub() {
     setBusy(true); setNotice('');
     try {
-      const redirectTo = window.location.origin + import.meta.env.BASE_URL;
+      const redirectTo = new URL('/mega/', window.location.origin).toString();
       const { error } = await supabase.auth.signInWithOAuth({ provider: 'github', options: { redirectTo } });
       if (error) throw error;
     } catch (e) { setNotice(e instanceof Error ? e.message : 'GitHub sign-in could not start'); setBusy(false); }
