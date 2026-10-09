@@ -94,10 +94,10 @@ jobs:
             buildTypes { release { signingConfig signingConfigs.debug; minifyEnabled false } }
           }
           """ % (pkg,pkg))
-          name=os.environ["APP_NAME"].replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
+          name="".join(ch for ch in os.environ["APP_NAME"] if ch >= " " and ch != "\\x7f").replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace('"',"&quot;")
           url=os.environ["WEBSITE_URL"]
           if not url.startswith(("https://","http://")): raise SystemExit("Invalid URL scheme")
-          url=url.replace("&","&amp;").replace('"',"&quot;").replace("<","&lt;").replace(">","&gt;")
+          url_literal=json.dumps(url, ensure_ascii=False)
           color=os.environ.get("SPLASH_COLOR","#111827")
           manifest=f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android"><uses-permission android:name="android.permission.INTERNET"/><application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="{name}" android:usesCleartextTraffic="true"><activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity></application></manifest>'''
           (root/"app/src/main/AndroidManifest.xml").write_text(manifest)
