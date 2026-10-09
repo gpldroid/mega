@@ -4,14 +4,14 @@ import {
   Activity, ArrowUpRight, CheckCircle2, CircleHelp, Clock3, Code2, Download, Eye, Monitor, Smartphone,
   ExternalLink, FileText, Github, Globe2, History, LayoutDashboard, LogIn,
   LogOut, Plus, Rocket, Save, ShieldCheck, Sparkles, Terminal, GitBranch, RefreshCw,
-  WandSparkles, XCircle, FileCode2, FolderInput, Search, FilePlus2
+  WandSparkles, XCircle, FileCode2, FolderInput, Search, FilePlus2, Image as ImageIcon
 } from 'lucide-react';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://upajzbaeuwzbhxfebzvi.supabase.co';
 const supabaseKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) || 'sb_publishable_tvp9Kreo5aMpK-aEU3AteA_axQbYhDP';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-type Tab = 'overview' | 'sites' | 'content' | 'developer' | 'seo' | 'android' | 'history' | 'devops' | 'admin';
+type Tab = 'overview' | 'sites' | 'content' | 'developer' | 'seo' | 'images' | 'android' | 'history' | 'devops' | 'admin';
 type Profile = { role: string; display_name: string | null };
 type Build = {
   id: string; status: string; requested_at: string; apk_url: string | null;
@@ -37,6 +37,68 @@ async function writeGitHubFile(token: string, path: string, content: string, mes
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(response.status === 401 || response.status === 403 ? 'GitHub refused repository write access. Sign in with GitHub again and approve public repository write access (public_repo scope) in Supabase GitHub provider settings.' : `GitHub could not save ${path}: ${data.message || `HTTP ${response.status}`}`);
   return data;
+}
+
+function ImageOptimizer() {
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [sourceName, setSourceName] = useState('');
+  const [sourceSize, setSourceSize] = useState(0);
+  const [outputUrl, setOutputUrl] = useState('');
+  const [outputSize, setOutputSize] = useState(0);
+  const [quality, setQuality] = useState(82);
+  const [maxWidth, setMaxWidth] = useState(1920);
+  const [format, setFormat] = useState<'image/webp'|'image/jpeg'>('image/webp');
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => () => {
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    if (outputUrl) URL.revokeObjectURL(outputUrl);
+  }, [sourceUrl, outputUrl]);
+  function selectFile(file?: File) {
+    setError('');
+    setOutputUrl('');
+    setOutputSize(0);
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Choose a valid image file.'); return; }
+    if (file.size > 15 * 1024 * 1024) { setError('Maximum input size is 15 MB.'); return; }
+    if (sourceUrl) URL.revokeObjectURL(sourceUrl);
+    setSourceUrl(URL.createObjectURL(file));
+    setSourceName(file.name.replace(/\.[^.]+$/, '') || 'optimized-image');
+    setSourceSize(file.size);
+  }
+  async function optimize() {
+    if (!sourceUrl) return;
+    setProcessing(true); setError('');
+    try {
+      const img = new Image();
+      img.src = sourceUrl;
+      await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error('Could not decode this image.')); });
+      const scale = Math.min(1, maxWidth / img.naturalWidth);
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Image canvas is not supported in this browser.');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('Could not encode the output. Try JPEG or a lower image size.')), format, quality / 100));
+      if (outputUrl) URL.revokeObjectURL(outputUrl);
+      setOutputUrl(URL.createObjectURL(blob));
+      setOutputSize(blob.size);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Image optimization failed.');
+    } finally { setProcessing(false); }
+  }
+  const formatBytes = (n: number) => n < 1024 ? n + ' B' : n < 1024 * 1024 ? (n / 1024).toFixed(1) + ' KB' : (n / (1024 * 1024)).toFixed(2) + ' MB';
+  const saved = sourceSize ? Math.round((1 - outputSize / sourceSize) * 100) : 0;
+  return <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Media tools</div><h1 className="mt-2 text-3xl font-bold">Image Optimizer</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Resize and convert images to WebP or JPEG directly in your browser. Files are processed locally and are not uploaded.</p>
+    <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]"><div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><label className="block text-sm text-slate-300">Choose image (max 15 MB)<input className="field mt-2" type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>selectFile(e.target.files?.[0])}/></label>
+      <label className="mt-5 block text-sm text-slate-300">Output format<select className="field mt-2" value={format} onChange={e=>setFormat(e.target.value as 'image/webp'|'image/jpeg')}><option value="image/webp">WebP — recommended for websites</option><option value="image/jpeg">JPEG — broad compatibility</option></select></label>
+      <label className="mt-5 block text-sm text-slate-300">Quality: {quality}%<input className="mt-3 w-full accent-violet-300" type="range" min="40" max="95" value={quality} onChange={e=>setQuality(Number(e.target.value))}/></label>
+      <label className="mt-5 block text-sm text-slate-300">Maximum width: {maxWidth}px<select className="field mt-2" value={maxWidth} onChange={e=>setMaxWidth(Number(e.target.value))}><option value="640">640px — small thumbnails</option><option value="1200">1200px — blog images</option><option value="1920">1920px — full-size web images</option><option value="2560">2560px — large screens</option></select></label>
+      <button type="button" className="btn btn-primary mt-6 w-full" disabled={!sourceUrl||processing} onClick={()=>void optimize()}><ImageIcon size={16}/>{processing?'Optimizing…':'Optimize image'}</button>
+      {error && <p role="alert" className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>}
+    </div><div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><h2 className="font-semibold">Preview & result</h2>{sourceUrl ? <><div className="mt-4 grid gap-4 sm:grid-cols-2"><div><div className="mb-2 text-xs text-slate-500">ORIGINAL · {formatBytes(sourceSize)}</div><img src={sourceUrl} alt="Original selected image" className="max-h-64 w-full rounded-xl bg-slate-900 object-contain"/></div><div><div className="mb-2 text-xs text-slate-500">OPTIMIZED{outputSize ? ' · '+formatBytes(outputSize) : ''}</div>{outputUrl ? <img src={outputUrl} alt="Optimized output preview" className="max-h-64 w-full rounded-xl bg-slate-900 object-contain"/> : <div className="flex min-h-40 items-center justify-center rounded-xl border border-dashed border-slate-700 text-sm text-slate-500">Run optimization to preview</div>}</div></div><div className="mt-4 text-sm text-slate-400">{sourceName}</div>{outputUrl && <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-900 p-4"><div><div className="font-semibold text-emerald-300">{saved >= 0 ? saved+'% smaller' : Math.abs(saved)+'% larger'}</div><div className="mt-1 text-xs text-slate-500">{formatBytes(sourceSize)} → {formatBytes(outputSize)}</div></div><a className="btn btn-primary text-xs" href={outputUrl} download={sourceName+(format==='image/webp'?'.webp':'.jpg')}><Download size={15}/> Download</a></div>}</> : <div className="flex min-h-64 flex-col items-center justify-center text-center text-sm text-slate-500"><ImageIcon size={30}/><p className="mt-3">Select an image to begin.</p></div>}</div></div>
+    <p className="mt-4 text-xs leading-5 text-slate-500">Note: conversion can increase file size for already optimized images. Transparent areas become a solid background when converting to JPEG. Check the downloaded result before publishing.</p></>;
 }
 
 function App() {
@@ -396,6 +458,7 @@ function App() {
     { id: 'content', label: 'Content Studio', icon: <FileText size={17}/>, group: 'WORKSPACE' },
     { id: 'developer', label: 'Code & Import Pro', icon: <FileCode2 size={17}/>, group: 'WORKSPACE' },
     { id: 'seo', label: 'SEO Audit', icon: <Search size={17}/>, group: 'WORKSPACE' },
+    { id: 'images', label: 'Image Optimizer', icon: <ImageIcon size={17}/>, group: 'WORKSPACE' },
     { id: 'android', label: 'Android Builder', icon: <Smartphone size={17}/>, group: 'BUILD TOOLS' },
     { id: 'history', label: 'Build history', icon: <History size={17}/>, group: 'BUILD TOOLS' },
     { id: 'devops', label: 'GitHub DevOps', icon: <GitBranch size={17}/>, group: 'BUILD TOOLS' },
@@ -453,6 +516,7 @@ function App() {
         </>}
 
         {tab === 'seo' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Search optimization</div><h1 className="mt-2 text-3xl font-bold">SEO Audit Tool</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Paste a page's HTML source to check essential on-page SEO signals locally. The source is analyzed in your browser and is not uploaded by this tool.</p><label className="mt-6 block text-sm text-slate-300">HTML source<textarea className="field mt-2 min-h-64 font-mono text-xs leading-5" value={seoHtml} onChange={e=>setSeoHtml(e.target.value)} placeholder="Paste your full HTML here, including the head and body…" /></label><div className="mt-3 flex flex-wrap gap-2"><button className="btn btn-primary text-xs" disabled={!seoHtml.trim()} onClick={()=>setNotice('SEO audit refreshed from the HTML currently in the editor.')}><Search size={14}/> Analyze HTML</button><button className="btn btn-quiet text-xs" onClick={()=>setSeoHtml('')}><XCircle size={14}/> Clear</button><span className="self-center text-xs text-slate-500">Checks title, description, canonical, H1, image alt, viewport and noindex.</span></div>{seoReport && <div className="mt-6"><div className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-5"><div className="text-sm text-slate-400">SEO checklist score</div><div className="mt-2 text-4xl font-bold">{seoReport.score}<span className="text-lg text-slate-500">/100</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-violet-300" style={{width:seoReport.score+'%'}}/></div></div><div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-5 sm:col-span-2"><div className="text-sm text-slate-400">Detected page title</div><div className="mt-2 font-semibold">{seoReport.title || 'Missing title tag'}</div><div className="mt-3 text-sm text-slate-400">Meta description</div><p className="mt-1 text-sm leading-6">{seoReport.description || 'Missing meta description'}</p></div></div><div className="mt-4 space-y-2">{seoReport.checks.map(check=><div key={check.label} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4"><div className="flex items-center gap-3">{check.ok?<CheckCircle2 size={18} className="text-emerald-300"/>:<XCircle size={18} className="text-amber-300"/>}<span className="text-sm font-medium">{check.label}</span></div><span className="text-xs text-slate-400">{check.detail}</span></div>)}</div><p className="mt-4 text-xs leading-5 text-slate-500">This is a basic on-page checklist, not a Google ranking prediction. It does not test page speed, rendered JavaScript, structured data validity, backlinks or actual indexing status.</p></div>}</>}
+        {tab === 'images' && <ImageOptimizer />}
         {tab === 'android' && <><div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Build tools</div><h1 className="mt-2 text-3xl font-bold">Android Builder</h1><p className="mt-2 text-sm text-slate-400">Configure a website and request APK, AAB and source ZIP artifacts.</p></div><span className="pill">Free-tier pipeline</span></div>
           <section className="mt-6 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950/60">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 p-4">
