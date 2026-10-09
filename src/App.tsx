@@ -193,8 +193,8 @@ function App() {
   </main>
 </body>
 </html>`;
-      await writeGitHubFile(githubToken, `${folder}/project.json`, JSON.stringify(project, null, 2) + '\\n', `Create website project: ${siteName.trim()}`);
-      await writeGitHubFile(githubToken, `${folder}/index.html`, starterHtml + '\\n', `Add starter page: ${siteName.trim()}`);
+      await writeGitHubFile(githubToken, `${folder}/project.json`, JSON.stringify(project, null, 2) + '\n', `Create website project: ${siteName.trim()}`);
+      await writeGitHubFile(githubToken, `${folder}/index.html`, starterHtml + '\n', `Add starter page: ${siteName.trim()}`);
       const { data, error } = await supabase.from('managed_sites').insert({
         user_id: user.id, name: siteName.trim(), site_url: siteUrl.trim() || null,
         description: siteDescription.trim(), framework: 'static', status: 'draft'
