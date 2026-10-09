@@ -64,12 +64,12 @@ jobs:
       - name: Mark build as building
         run: |
           curl --fail-with-body -sS -X PATCH "$SUPABASE_URL/rest/v1/builds?id=eq.$BUILD_ID" \
-            -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+            -H "apikey: $SUPABASE_SECRET_KEY" -H "Authorization: Bearer $SUPABASE_SECRET_KEY" \
             -H "Content-Type: application/json" -H "Prefer: return=minimal" \
             --data '{"status":"building","started_at":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       - name: Generate Android project files
         shell: bash
         run: |
@@ -137,12 +137,12 @@ jobs:
           b=os.environ["BUILD_ID"]; tag="build-"+b
           base=os.environ["GITHUB_SERVER_URL"]+"/"+os.environ["GITHUB_REPOSITORY"]+"/releases/download/"+tag+"/"
           payload={"status":"completed","completed_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),"apk_url":base+"mega-"+b+".apk","aab_url":base+"mega-"+b+".aab","source_zip_url":base+"mega-"+b+"-source.zip","error_message":None}
-          req=urllib.request.Request(os.environ["SUPABASE_URL"]+"/rest/v1/builds?id=eq."+b,data=json.dumps(payload).encode(),method="PATCH",headers={"apikey":os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Authorization":"Bearer "+os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Content-Type":"application/json","Prefer":"return=minimal"})
+          req=urllib.request.Request(os.environ["SUPABASE_URL"]+"/rest/v1/builds?id=eq."+b,data=json.dumps(payload).encode(),method="PATCH",headers={"apikey":os.environ["SUPABASE_SECRET_KEY"],"Authorization":"Bearer "+os.environ["SUPABASE_SECRET_KEY"],"Content-Type":"application/json","Prefer":"return=minimal"})
           urllib.request.urlopen(req).read()
           PY
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       - name: Mark build failed
         if: failure() && env.BUILD_ID != ''
         continue-on-error: true
@@ -150,9 +150,9 @@ jobs:
           python3 - <<'PY'
           import json, os, urllib.request
           payload={"status":"failed","completed_at":__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),"error_message":"GitHub Actions build failed. Open the workflow run logs for details."}
-          req=urllib.request.Request(os.environ["SUPABASE_URL"]+"/rest/v1/builds?id=eq."+os.environ["BUILD_ID"],data=json.dumps(payload).encode(),method="PATCH",headers={"apikey":os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Authorization":"Bearer "+os.environ["SUPABASE_SERVICE_ROLE_KEY"],"Content-Type":"application/json","Prefer":"return=minimal"})
+          req=urllib.request.Request(os.environ["SUPABASE_URL"]+"/rest/v1/builds?id=eq."+os.environ["BUILD_ID"],data=json.dumps(payload).encode(),method="PATCH",headers={"apikey":os.environ["SUPABASE_SECRET_KEY"],"Authorization":"Bearer "+os.environ["SUPABASE_SECRET_KEY"],"Content-Type":"application/json","Prefer":"return=minimal"})
           urllib.request.urlopen(req).read()
           PY
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
