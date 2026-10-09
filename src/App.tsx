@@ -42,7 +42,7 @@ function App() {
   const [siteName, setSiteName] = useState('');
   const [siteUrl, setSiteUrl] = useState('');
   const [siteDescription, setSiteDescription] = useState('');
-  const [pageDraft, setPageDraft] = useState(emptyPage);
+  const [pageDraft, setPageDraft] = useState<{ title: string; slug: string; body: string; status: 'draft' | 'published' }>(emptyPage);
   const [name, setName] = useState('My Website');
   const [website, setWebsite] = useState('https://example.com');
   const [pkg, setPkg] = useState('com.example.mywebsite');
