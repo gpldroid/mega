@@ -16,15 +16,15 @@ MEGA turns an HTTP(S) website into an Android WebView project and builds APK, AA
 Open Supabase Dashboard → Edge Functions → Secrets and set:
 - `GITHUB_TOKEN`: fine-grained GitHub PAT with Contents: Read and write and Metadata: Read-only on `gpldroid/mega`.
 - `GITHUB_REPOSITORY=gpldroid/mega`
-- `SUPABASE_SERVICE_ROLE_KEY`: service-role key; server-side only.
-- `SUPABASE_ANON_KEY`: project publishable/anon key.
+- `SUPABASE_SECRET_KEY`: Supabase Secret API key (`sb_secret_...`); server-side only.
+- `SUPABASE_PUBLISHABLE_KEY`: project publishable key (`sb_publishable_...`).
 - `APP_ORIGIN`: deployed frontend origin. Use `*` only during development.
 
 ## Required GitHub Actions repository secrets
 In GitHub → Settings → Secrets and variables → Actions add:
 - `SUPABASE_URL=https://upajzbaeuwzbhxfebzvi.supabase.co`
-- `SUPABASE_SERVICE_ROLE_KEY`: service-role key from Supabase API settings.
-- `SUPABASE_ANON_KEY`: publishable/anon key.
+- `SUPABASE_SECRET_KEY`: Supabase Secret API key (`sb_secret_...`); server-side only.
+- `SUPABASE_PUBLISHABLE_KEY`: publishable key (`sb_publishable_...`).
 
 The Android workflow uses its built-in `GITHUB_TOKEN` with contents write permission to publish each build as a prerelease with APK, AAB and source ZIP assets.
 
@@ -37,7 +37,7 @@ update public.profiles set role = 'admin' where email = 'YOUR_EMAIL';
 ```
 
 ## GitHub Pages deployment
-1. Add GitHub Actions secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` if you want to override the public defaults.
+1. Add GitHub Actions secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` if you want to override the public defaults.
 2. In repository Settings → Pages, set the source to **GitHub Actions**.
 3. Push to `main`; `.github/workflows/deploy-pages.yml` builds and deploys the static frontend.
 
