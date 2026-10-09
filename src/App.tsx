@@ -283,6 +283,57 @@ function App() {
       setBusy(false);
     }
   }
+  async function deletePage(page: SitePage) {
+    if (!user || !activeSiteId) { setNotice('Select a website first.'); return; }
+    if (!window.confirm(`Delete the page "${page.title}"? This removes its Supabase record and, when GitHub access is available, its generated HTML file.`)) return;
+    setBusy(true); setNotice('');
+    try {
+      const site = sites.find(item => item.id === activeSiteId);
+      let githubNote = '';
+      const { data: { session } } = await supabase.auth.getSession();
+      const githubToken = session?.provider_token;
+      if (site?.project_path && githubToken) {
+        const path = `${site.project_path}/pages/${safeRepoPath(page.slug)}.html`;
+        const encodedPath = path.split('/').map(encodeURIComponent).join('/');
+        const fileResponse = await fetch(`https://api.github.com/repos/gpldroid/mega/contents/${encodedPath}?ref=main`, {
+          headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28' }
+        });
+        if (fileResponse.ok) {
+          const file = await fileResponse.json() as { sha: string };
+          const deleteResponse = await fetch(`https://api.github.com/repos/gpldroid/mega/contents/${encodedPath}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${githubToken}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
+            body: JSON.stringify({ message: `Delete website page: ${page.title}`, sha: file.sha, branch: 'main' })
+          });
+          if (!deleteResponse.ok) {
+            const details = await deleteResponse.json().catch(() => ({})) as { message?: string };
+            throw new Error(`GitHub could not delete ${path}: ${details.message || deleteResponse.status}`);
+          }
+        } else if (fileResponse.status !== 404) {
+          throw new Error(`Could not check GitHub page file (HTTP ${fileResponse.status}). The page was not deleted.`);
+        } else {
+          githubNote = ' No generated HTML file was found in GitHub.';
+        }
+      } else {
+        githubNote = ' The Supabase page was removed, but GitHub HTML could not be checked because GitHub sign-in access is unavailable.';
+      }
+      const { error } = await supabase.from('site_pages').delete().eq('id', page.id).eq('site_id', activeSiteId);
+      if (error) throw new Error('GitHub cleanup may be complete, but Supabase could not delete the page: ' + error.message);
+      const remaining = pages.filter(item => item.id !== page.id);
+      setPages(remaining);
+      if (activePageId === page.id) {
+        const next = remaining[0];
+        setActivePageId(next?.id || '');
+        setPageDraft(next ? { title: next.title, slug: next.slug, body: next.body, status: next.status } : emptyPage);
+      }
+      setNotice(`Deleted page "${page.title}".${githubNote}`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Could not delete page.');
+      await loadPages(activeSiteId);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function submitBuild(e: FormEvent) {
     e.preventDefault();
     if (!user) { setNotice('Sign in first to request an Android build.'); return; }
@@ -364,7 +415,7 @@ function App() {
         </>}
 
         {tab === 'content' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Website editor</div><h1 className="mt-2 text-3xl font-bold">Content Studio</h1><p className="mt-2 text-sm text-slate-400">Create pages, edit copy and sync page HTML into your GitHub project folder.</p>
-          {!sites.length ? <Empty icon={<Globe2 size={24}/>} title="Create a website first" detail="Pages belong to a website project." action="Go to Websites" onAction={() => setTab('sites')}/> : <div className="mt-6 grid gap-5 xl:grid-cols-[240px_minmax(0,1fr)]"><aside className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4"><label className="block text-xs text-slate-500">WEBSITE<select className="field mt-2" value={activeSiteId} onChange={e => {setActiveSiteId(e.target.value);setActivePageId('');setPageDraft(emptyPage)}}>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><div className="mb-3 mt-6 flex items-center justify-between"><h2 className="text-sm font-semibold">Pages</h2><button title="New page" onClick={() => {setActivePageId('');setPageDraft(emptyPage)}} className="rounded-lg border border-slate-700 p-2 text-violet-200"><Plus size={15}/></button></div>{pages.map(p=><button key={p.id} onClick={() => {setActivePageId(p.id);setPageDraft({title:p.title,slug:p.slug,body:p.body,status:p.status})}} className={'mb-2 w-full rounded-xl p-3 text-left '+(activePageId===p.id?'bg-violet-300/10 text-violet-100':'text-slate-400 hover:bg-white/5')}><div className="truncate text-sm font-medium">{p.title}</div><div className="mt-1 truncate text-[11px] text-slate-500">/{p.slug} · {p.status}</div></button>)}{!pages.length && <p className="py-3 text-xs leading-5 text-slate-500">No pages yet. Create one using +.</p>}</aside>
+          {!sites.length ? <Empty icon={<Globe2 size={24}/>} title="Create a website first" detail="Pages belong to a website project." action="Go to Websites" onAction={() => setTab('sites')}/> : <div className="mt-6 grid gap-5 xl:grid-cols-[240px_minmax(0,1fr)]"><aside className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4"><label className="block text-xs text-slate-500">WEBSITE<select className="field mt-2" value={activeSiteId} onChange={e => {setActiveSiteId(e.target.value);setActivePageId('');setPageDraft(emptyPage)}}>{sites.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><div className="mb-3 mt-6 flex items-center justify-between"><h2 className="text-sm font-semibold">Pages</h2><button title="New page" onClick={() => {setActivePageId('');setPageDraft(emptyPage)}} className="rounded-lg border border-slate-700 p-2 text-violet-200"><Plus size={15}/></button></div>{pages.map(p=><div key={p.id} className={'mb-2 flex items-stretch gap-1 rounded-xl '+(activePageId===p.id?'bg-violet-300/10':'')}><button type="button" onClick={() => {setActivePageId(p.id);setPageDraft({title:p.title,slug:p.slug,body:p.body,status:p.status})}} className={'min-w-0 flex-1 rounded-xl p-3 text-left '+(activePageId===p.id?'text-violet-100':'text-slate-400 hover:bg-white/5')}><div className="truncate text-sm font-medium">{p.title}</div><div className="mt-1 truncate text-[11px] text-slate-500">/{p.slug} · {p.status}</div></button><button type="button" title={`Delete ${p.title}`} aria-label={`Delete page ${p.title}`} disabled={busy} onClick={() => void deletePage(p)} className="my-2 mr-2 rounded-lg border border-rose-900/60 px-2 text-rose-300 hover:bg-rose-950/40 disabled:opacity-50"><XCircle size={15}/></button></div>)}{!pages.length && <p className="py-3 text-xs leading-5 text-slate-500">No pages yet. Create one using +.</p>}</aside>
             <form onSubmit={savePage} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{activePage ? 'Edit page' : 'Create a page'}</h2><p className="mt-1 text-xs text-slate-500">Website: {activeSite?.name || 'Selected project'}</p></div><span className="pill">{pageDraft.status}</span></div><label className="block text-sm text-slate-300">Page title<input className="field mt-2" required maxLength={160} value={pageDraft.title} onChange={e => setPageDraft(d=>({...d,title:e.target.value,slug:activePageId?d.slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">URL slug<input className="field mt-2" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={pageDraft.slug} onChange={e => setPageDraft(d=>({...d,slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">Page content / draft<textarea className="field mt-2 min-h-64 resize-y leading-7" value={pageDraft.body} onChange={e => setPageDraft(d=>({...d,body:e.target.value}))} placeholder="Write your page content here…"/></label><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={pageDraft.status==='published'} onChange={e=>setPageDraft(d=>({...d,status:e.target.checked?'published':'draft'}))}/> Mark as published in workspace</label><button disabled={busy} className="btn btn-primary disabled:opacity-50"><Save size={16}/>{busy?'Saving…':'Save page'}</button></div><p className="mt-4 text-xs leading-5 text-slate-500">Saving stores the page in Supabase and, when GitHub access is available, writes an HTML source file under webs/projects/&lt;project&gt;/pages/. This does not publish a live website automatically.</p></form></div>}
         </>}
 
