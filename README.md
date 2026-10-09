@@ -24,8 +24,6 @@ Open Supabase Dashboard → Edge Functions → Secrets and set:
 In GitHub → Settings → Secrets and variables → Actions add:
 - `SUPABASE_URL=https://upajzbaeuwzbhxfebzvi.supabase.co`
 - `SUPABASE_SECRET_KEY`: Supabase Secret API key (`sb_secret_...`); server-side only.
-- `SUPABASE_PUBLISHABLE_KEY`: publishable key (`sb_publishable_...`).
-
 The Android workflow uses its built-in `GITHUB_TOKEN` with contents write permission to publish each build as a prerelease with APK, AAB and source ZIP assets.
 
 ## Supabase setup already applied
