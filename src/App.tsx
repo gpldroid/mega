@@ -11,7 +11,7 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://upajzbaeuwzbhx
 const supabaseKey = (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) || 'sb_publishable_tvp9Kreo5aMpK-aEU3AteA_axQbYhDP';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-type Tab = 'overview' | 'sites' | 'content' | 'developer' | 'android' | 'history' | 'devops' | 'admin';
+type Tab = 'overview' | 'sites' | 'content' | 'developer' | 'seo' | 'android' | 'history' | 'devops' | 'admin';
 type Profile = { role: string; display_name: string | null };
 type Build = {
   id: string; status: string; requested_at: string; apk_url: string | null;
@@ -79,6 +79,7 @@ function App() {
   const [sourceFiles, setSourceFiles] = useState<{name:string;path:string;type:string;size?:number}[]>([]);
   const [selectedSourceFile, setSelectedSourceFile] = useState('');
   const [importLoading, setImportLoading] = useState(false);
+  const [seoHtml, setSeoHtml] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -359,11 +360,34 @@ function App() {
   }), [builds]);
   const activeSite = sites.find(s => s.id === activeSiteId) ?? null;
   const activePage = pages.find(p => p.id === activePageId) ?? null;
+  const seoReport = useMemo(() => {
+    if (!seoHtml.trim()) return null;
+    const doc = new DOMParser().parseFromString(seoHtml, 'text/html');
+    const title = doc.querySelector('title')?.textContent?.trim() || '';
+    const description = doc.querySelector('meta[name="description" i]')?.getAttribute('content')?.trim() || '';
+    const canonical = doc.querySelector('link[rel="canonical" i]')?.getAttribute('href')?.trim() || '';
+    const h1Count = doc.querySelectorAll('h1').length;
+    const images = Array.from(doc.querySelectorAll('img'));
+    const missingAlt = images.filter(img => !img.hasAttribute('alt') || !img.getAttribute('alt')?.trim()).length;
+    const viewport = Boolean(doc.querySelector('meta[name="viewport" i]'));
+    const robots = doc.querySelector('meta[name="robots" i]')?.getAttribute('content')?.toLowerCase() || '';
+    const checks = [
+      { label: 'Page title (30–60 characters)', ok: title.length >= 30 && title.length <= 60, detail: title ? title.length + ' characters' : 'Missing title' },
+      { label: 'Meta description (120–160 characters)', ok: description.length >= 120 && description.length <= 160, detail: description ? description.length + ' characters' : 'Missing description' },
+      { label: 'Canonical URL', ok: Boolean(canonical && /^https?:\/\//i.test(canonical)), detail: canonical || 'Missing canonical link' },
+      { label: 'Exactly one H1 heading', ok: h1Count === 1, detail: h1Count + ' H1 heading(s)' },
+      { label: 'Image alt text', ok: missingAlt === 0, detail: images.length ? missingAlt + ' of ' + images.length + ' images missing alt' : 'No images found' },
+      { label: 'Mobile viewport', ok: viewport, detail: viewport ? 'Viewport meta found' : 'Missing viewport meta' },
+      { label: 'Indexing allowed', ok: !robots.includes('noindex'), detail: robots || 'No robots directive (default indexing behavior)' }
+    ];
+    return { title, description, checks, score: Math.round(checks.filter(check => check.ok).length / checks.length * 100) };
+  }, [seoHtml]);
   const nav: { id: Tab; label: string; icon: React.ReactNode; group: string }[] = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard size={17}/>, group: 'WORKSPACE' },
     { id: 'sites', label: 'Websites', icon: <Globe2 size={17}/>, group: 'WORKSPACE' },
     { id: 'content', label: 'Content Studio', icon: <FileText size={17}/>, group: 'WORKSPACE' },
     { id: 'developer', label: 'Code & Import Pro', icon: <FileCode2 size={17}/>, group: 'WORKSPACE' },
+    { id: 'seo', label: 'SEO Audit', icon: <Search size={17}/>, group: 'WORKSPACE' },
     { id: 'android', label: 'Android Builder', icon: <Smartphone size={17}/>, group: 'BUILD TOOLS' },
     { id: 'history', label: 'Build history', icon: <History size={17}/>, group: 'BUILD TOOLS' },
     { id: 'devops', label: 'GitHub DevOps', icon: <GitBranch size={17}/>, group: 'BUILD TOOLS' },
@@ -419,6 +443,7 @@ function App() {
             <form onSubmit={savePage} className="min-w-0 rounded-2xl border border-slate-800 bg-slate-950/40 p-5"><div className="mb-5 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">{activePage ? 'Edit page' : 'Create a page'}</h2><p className="mt-1 text-xs text-slate-500">Website: {activeSite?.name || 'Selected project'}</p></div><span className="pill">{pageDraft.status}</span></div><label className="block text-sm text-slate-300">Page title<input className="field mt-2" required maxLength={160} value={pageDraft.title} onChange={e => setPageDraft(d=>({...d,title:e.target.value,slug:activePageId?d.slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">URL slug<input className="field mt-2" required pattern="[a-z0-9]+(-[a-z0-9]+)*" value={pageDraft.slug} onChange={e => setPageDraft(d=>({...d,slug:slugify(e.target.value)}))}/></label><label className="mt-4 block text-sm text-slate-300">Page content / draft<textarea className="field mt-2 min-h-64 resize-y leading-7" value={pageDraft.body} onChange={e => setPageDraft(d=>({...d,body:e.target.value}))} placeholder="Write your page content here…"/></label><div className="mt-4 flex flex-wrap items-center justify-between gap-3"><label className="flex items-center gap-2 text-sm text-slate-300"><input type="checkbox" checked={pageDraft.status==='published'} onChange={e=>setPageDraft(d=>({...d,status:e.target.checked?'published':'draft'}))}/> Mark as published in workspace</label><button disabled={busy} className="btn btn-primary disabled:opacity-50"><Save size={16}/>{busy?'Saving…':'Save page'}</button></div><p className="mt-4 text-xs leading-5 text-slate-500">Saving stores the page in Supabase and, when GitHub access is available, writes an HTML source file under webs/projects/&lt;project&gt;/pages/. This does not publish a live website automatically.</p></form></div>}
         </>}
 
+        {tab === 'seo' && <><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Search optimization</div><h1 className="mt-2 text-3xl font-bold">SEO Audit Tool</h1><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">Paste a page's HTML source to check essential on-page SEO signals locally. The source is analyzed in your browser and is not uploaded by this tool.</p><label className="mt-6 block text-sm text-slate-300">HTML source<textarea className="field mt-2 min-h-64 font-mono text-xs leading-5" value={seoHtml} onChange={e=>setSeoHtml(e.target.value)} placeholder="Paste your full HTML here, including the head and body…" /></label><div className="mt-3 flex flex-wrap gap-2"><button className="btn btn-primary text-xs" disabled={!seoHtml.trim()} onClick={()=>setNotice('SEO audit refreshed from the HTML currently in the editor.')}><Search size={14}/> Analyze HTML</button><button className="btn btn-quiet text-xs" onClick={()=>setSeoHtml('')}><XCircle size={14}/> Clear</button><span className="self-center text-xs text-slate-500">Checks title, description, canonical, H1, image alt, viewport and noindex.</span></div>{seoReport && <div className="mt-6"><div className="grid gap-3 sm:grid-cols-3"><div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-5"><div className="text-sm text-slate-400">SEO checklist score</div><div className="mt-2 text-4xl font-bold">{seoReport.score}<span className="text-lg text-slate-500">/100</span></div><div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full rounded-full bg-violet-300" style={{width:seoReport.score+'%'}}/></div></div><div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-5 sm:col-span-2"><div className="text-sm text-slate-400">Detected page title</div><div className="mt-2 font-semibold">{seoReport.title || 'Missing title tag'}</div><div className="mt-3 text-sm text-slate-400">Meta description</div><p className="mt-1 text-sm leading-6">{seoReport.description || 'Missing meta description'}</p></div></div><div className="mt-4 space-y-2">{seoReport.checks.map(check=><div key={check.label} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/40 p-4"><div className="flex items-center gap-3">{check.ok?<CheckCircle2 size={18} className="text-emerald-300"/>:<XCircle size={18} className="text-amber-300"/>}<span className="text-sm font-medium">{check.label}</span></div><span className="text-xs text-slate-400">{check.detail}</span></div>)}</div><p className="mt-4 text-xs leading-5 text-slate-500">This is a basic on-page checklist, not a Google ranking prediction. It does not test page speed, rendered JavaScript, structured data validity, backlinks or actual indexing status.</p></div>}</>}
         {tab === 'android' && <><div className="flex items-start justify-between gap-3"><div><div className="text-xs font-bold uppercase tracking-[.2em] text-violet-200">Build tools</div><h1 className="mt-2 text-3xl font-bold">Android Builder</h1><p className="mt-2 text-sm text-slate-400">Configure a website and request APK, AAB and source ZIP artifacts.</p></div><span className="pill">Free-tier pipeline</span></div>
           <section className="mt-6 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950/60">
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 p-4">
