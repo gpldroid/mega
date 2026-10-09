@@ -23,6 +23,16 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://upajzbaeuwzbhxfebzvi.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+      # Preserve generated website projects; Vite only copies files from public/ into dist.
+      - name: Include managed website projects
+        run: |
+          if [ -d webs/projects ]; then
+            mkdir -p dist/webs/projects
+            cp -R webs/projects/. dist/webs/projects/
+            echo "Included website project files in the Pages artifact."
+          else
+            echo "No webs/projects directory yet; deploying the dashboard only."
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
